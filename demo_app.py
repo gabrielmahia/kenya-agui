@@ -19,37 +19,31 @@ def get_key():
     except Exception:
         return None
 
-def gemini(prompt: str, key: str, max_tokens: int = 600) -> str:
-    """Call Gemini — returns fallback string on any error, never raises."""
+def gemini(prompt: str, key: str, max_tokens: int = 1200) -> str:
+    """Call Gemini — returns a graceful fallback string, never raises."""
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    prompt = prompt[:5000]  # stay within token limits
+    prompt = prompt[:5000]
     body = {"contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}}
     req = urllib.request.Request(f"{url}?key={key}",
-        data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=25,
-                                     context=ssl.create_default_context()) as r:
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=25, context=ctx) as r:
             d = json.loads(r.read())
         candidates = d.get("candidates", [])
         if not candidates:
-            return "_No response from AI — the model may be unavailable. Try again._"
+            return "_No response generated. Try again._"
         return candidates[0]["content"]["parts"][0]["text"]
     except urllib.error.HTTPError as e:
         try:
             detail = e.read().decode("utf-8", errors="replace")[:200]
         except Exception:
             detail = str(e)
-        return f"_AI temporarily unavailable (HTTP {e.code}). Detail: {detail}_"
+        return f"_AI temporarily unavailable (HTTP {e.code}). {detail}_"
     except Exception as e:
         return f"_AI call failed: {type(e).__name__}. Check GOOGLE_API_KEY in Streamlit secrets._"
-
-if "events" not in st.session_state:
-    st.session_state.events = []
-if "approval_state" not in st.session_state:
-    st.session_state.approval_state = "idle"
-if "pending" not in st.session_state:
-    st.session_state.pending = {}
 
 def log_event(label: str, detail: str = ""):
     st.session_state.events.append({
