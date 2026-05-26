@@ -19,16 +19,23 @@ def get_key():
     except Exception:
         return None
 
-def gemini(prompt: str, key: str) -> str:
+def gemini(prompt: str, key: str, max_tokens: int = 600) -> str:
+    """Call Gemini with error handling — reads API error body on failure."""
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+    # Trim prompt to avoid 400 errors from token overflow
+    prompt = prompt[:6000]
     body = {"contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600}}
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}}
     req = urllib.request.Request(f"{url}?key={key}",
         data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    ctx = ssl.create_default_context()
-    with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
-        d = json.loads(r.read())
-    return d["candidates"][0]["content"]["parts"][0]["text"]
+    _ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, timeout=25, context=_ctx) as r:
+            d = json.loads(r.read())
+        return d["candidates"][0]["content"]["parts"][0]["text"]
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Gemini API error {e.code}: {err_body}") from e
 
 if "events" not in st.session_state:
     st.session_state.events = []
