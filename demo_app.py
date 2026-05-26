@@ -20,22 +20,29 @@ def get_key():
         return None
 
 def gemini(prompt: str, key: str, max_tokens: int = 600) -> str:
-    """Call Gemini with error handling — reads API error body on failure."""
+    """Call Gemini — returns fallback string on any error, never raises."""
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    # Trim prompt to avoid 400 errors from token overflow
-    prompt = prompt[:6000]
+    prompt = prompt[:5000]  # stay within token limits
     body = {"contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": max_tokens}}
     req = urllib.request.Request(f"{url}?key={key}",
         data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    _ctx = ssl.create_default_context()
     try:
-        with urllib.request.urlopen(req, timeout=25, context=_ctx) as r:
+        with urllib.request.urlopen(req, timeout=25,
+                                     context=ssl.create_default_context()) as r:
             d = json.loads(r.read())
-        return d["candidates"][0]["content"]["parts"][0]["text"]
+        candidates = d.get("candidates", [])
+        if not candidates:
+            return "_No response from AI — the model may be unavailable. Try again._"
+        return candidates[0]["content"]["parts"][0]["text"]
     except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8", errors="replace")[:300]
-        raise RuntimeError(f"Gemini API error {e.code}: {err_body}") from e
+        try:
+            detail = e.read().decode("utf-8", errors="replace")[:200]
+        except Exception:
+            detail = str(e)
+        return f"_AI temporarily unavailable (HTTP {e.code}). Detail: {detail}_"
+    except Exception as e:
+        return f"_AI call failed: {type(e).__name__}. Check GOOGLE_API_KEY in Streamlit secrets._"
 
 if "events" not in st.session_state:
     st.session_state.events = []
@@ -126,20 +133,24 @@ if demo == "🌊 Live County Analysis":
             log_event(f"Fetching {county} data", f"water_stress={data['water_stress']}")
             if key:
                 with st.spinner(f"AI analysing {county} County..."):
-                    resp = gemini(f"""Analyse the water security situation in {county} County, Kenya.
-Water stress: {data['water_stress']:.0%} ({data['status']})
-Drought level: {data['drought']:.0%}
-Population at risk: {int(data['pop']*data['water_stress']):,} people
-
-Write a clear, 4-paragraph briefing for a county government official:
-1. Current situation in plain language
-2. The three most urgent actions to take
-3. Communities most at risk and why
-4. What to monitor over the next 30 days
-
-Use simple language. Be specific to Kenya — mention NDMA, WRMA, county government roles.""", key)
+                    try:
+                        resp = gemini(f"""Analyse the water security situation in {county} County, Kenya.
+    Water stress: {data['water_stress']:.0%} ({data['status']})
+    Drought level: {data['drought']:.0%}
+    Population at risk: {int(data['pop']*data['water_stress']):,} people
+    
+    Write a clear, 4-paragraph briefing for a county government official:
+    1. Current situation in plain language
+    2. The three most urgent actions to take
+    3. Communities most at risk and why
+    4. What to monitor over the next 30 days
+    
+    Use simple language. Be specific to Kenya — mention NDMA, WRMA, county government roles.""", key)
+                    except Exception as _gemini_err:
+                        resp = f'_AI temporarily unavailable: {_gemini_err}_'
+                        st.warning(f'⚠️ AI response unavailable: {_gemini_err}')
                     log_event(f"{county} analysis complete")
-                    st.markdown(resp)
+                    st.markdown(resp if resp else '_No response — try again_')
             else:
                 st.info("AI analysis requires a Google API key in Streamlit secrets.")
 
@@ -183,12 +194,16 @@ elif demo == "🗺️ Smart Dashboard":
         st.divider()
         if key:
             with st.spinner("AI writing executive summary..."):
-                summary = gemini("""Write a 3-sentence executive summary of Kenya's current drought situation.
-Key facts: 12 of 47 counties at critical water stress. 4.8M people at risk. Northern and coastal counties worst affected.
-Address it to the Cabinet Secretary for Water. Use formal but clear language.""", key)
+                try:
+                    summary = gemini("""Write a 3-sentence executive summary of Kenya's current drought situation.
+    Key facts: 12 of 47 counties at critical water stress. 4.8M people at risk. Northern and coastal counties worst affected.
+    Address it to the Cabinet Secretary for Water. Use formal but clear language.""", key)
+                except Exception as _gemini_err:
+                    summary = f'_AI temporarily unavailable: {_gemini_err}_'
+                    st.warning(f'⚠️ AI response unavailable: {_gemini_err}')
                 log_event("Executive summary generated")
             st.markdown("**📋 AI Executive Summary**")
-            st.markdown(summary)
+            st.markdown(summary if summary else '_No AI response — check API key_')
 
 # ── DEMO 3: Ask Before Acting ─────────────────────────────────
 elif demo == "✅ Ask Before Acting":
@@ -330,21 +345,25 @@ Think of it like a team of specialists coordinating in real time.
             status_text.markdown("**✅ All agents complete — generating unified response**")
 
             with st.spinner("Writing final briefing..."):
-                resp = gemini(f"""You are coordinating an AI team responding to this request: {query}
-
-Simulate what a complete AI response looks like, combining:
-1. Water data analysis (Turkana: water_stress=97%, drought=96%, 900K people at risk)
-2. M-Pesa payment logistics (who gets what amount, how)
-3. Timeline and priority recommendations
-4. What requires human approval before proceeding
-
-Write a clear, 5-paragraph response for a Kenya county government official.
-Include specific KES amounts, NDMA references, and M-Pesa Paybill numbers where relevant.
-End with a clear list of what the AI team will do vs what needs human sign-off.""", key)
+                try:
+                    resp = gemini(f"""You are coordinating an AI team responding to this request: {query}
+    
+    Simulate what a complete AI response looks like, combining:
+    1. Water data analysis (Turkana: water_stress=97%, drought=96%, 900K people at risk)
+    2. M-Pesa payment logistics (who gets what amount, how)
+    3. Timeline and priority recommendations
+    4. What requires human approval before proceeding
+    
+    Write a clear, 5-paragraph response for a Kenya county government official.
+    Include specific KES amounts, NDMA references, and M-Pesa Paybill numbers where relevant.
+    End with a clear list of what the AI team will do vs what needs human sign-off.""", key)
+                except Exception as _gemini_err:
+                    resp = f'_AI temporarily unavailable: {_gemini_err}_'
+                    st.warning(f'⚠️ AI response unavailable: {_gemini_err}')
 
             st.divider()
             st.markdown("### 🤖 AI Team Response")
-            st.markdown(resp)
+            st.markdown(resp if resp else '_No response — try again_')
             log_event("Full workflow complete")
             st.success("The AI prepared the full analysis. Any payment or alert execution requires your approval.")
 
