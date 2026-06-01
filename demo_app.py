@@ -45,6 +45,14 @@ def gemini(prompt: str, key: str, max_tokens: int = 1200) -> str:
     except Exception as e:
         return f"_AI call failed: {type(e).__name__}. Check GOOGLE_API_KEY in Streamlit secrets._"
 
+# ── Session state initialisation (prevents AttributeError on first load) ──
+if 'events' not in st.session_state:
+    st.session_state.events = []
+if 'pending' not in st.session_state:
+    st.session_state.pending = None
+if 'approval_state' not in st.session_state:
+    st.session_state.approval_state = None
+
 def log_event(label: str, detail: str = ""):
     st.session_state.events.append({
         "label": label, "detail": detail,
