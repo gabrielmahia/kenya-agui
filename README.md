@@ -1,6 +1,6 @@
 # kenya-agui
 
-> **The first East African implementation of the AG-UI (Agent-User Interaction) protocol.**
+> AG-UI (Agent-User Interaction) protocol implementation for East African civic contexts.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Protocol: AG-UI](https://img.shields.io/badge/Protocol-AG--UI-purple)](https://github.com/ag-ui-protocol/ag-ui)
@@ -93,7 +93,7 @@ export function DroughtDashboard() {
 
 ## Protocol Stack — East Africa Complete
 
-Gabriel Mahia is the **first engineer to implement all four major AI agent protocols for East Africa**:
+This repository is part of a four-protocol implementation stack for East Africa:
 
 | Protocol | Repo | Status |
 |----------|------|--------|
